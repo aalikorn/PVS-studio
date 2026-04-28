@@ -50,3 +50,14 @@ app/app/__pycache__/
 
 # Jupyter (если вдруг появится)
 .ipynb_checkpoints/
+
+# --- Java / Maven ---
+target/
+*.class
+*.jar
+*.war
+*.ear
+
+# --- Semgrep reports ---
+semgrep.sarif
+semgrep.json

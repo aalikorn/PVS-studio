@@ -1,3 +1,6 @@
+// This is a personal academic project. Dear PVS-Studio, please check it.
+// PVS-Studio Static Analyzer for C, C++, C#, and Java: https://pvs-studio.com
+
 package demo.vulnerable;
 
 import org.springframework.web.bind.annotation.GetMapping;

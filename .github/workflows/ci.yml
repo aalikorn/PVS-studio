@@ -1,6 +1,7 @@
 name: CI Pipeline
 
 on:
+  workflow_dispatch:
   push:
     branches: [ main]
   pull_request:
@@ -130,3 +131,58 @@ jobs:
         cache-from: type=gha
         cache-to: type=gha,mode=max
 
+  semgrep:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install Semgrep
+      run: pip install semgrep
+
+    - name: Run Semgrep SARIF scan
+      run: |
+        semgrep scan \
+          --config p/java \
+          --config p/python \
+          --config p/security-audit \
+          --config p/owasp-top-ten \
+          --sarif \
+          --output semgrep.sarif
+
+    - name: Run Semgrep JSON scan
+      if: always()
+      run: |
+        semgrep scan \
+          --config p/java \
+          --config p/python \
+          --config p/security-audit \
+          --config p/owasp-top-ten \
+          --json \
+          --output semgrep.json || true
+
+    - name: Upload Semgrep SARIF to GitHub Security
+      uses: github/codeql-action/upload-sarif@v4
+      if: always() && hashFiles('semgrep.sarif') != ''
+      with:
+        sarif_file: semgrep.sarif
+        category: Semgrep
+
+    - name: Upload Semgrep reports
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: semgrep-reports
+        path: |
+          semgrep.sarif
+          semgrep.json
+        if-no-files-found: warn
