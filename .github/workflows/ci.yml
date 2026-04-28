@@ -139,8 +139,8 @@ jobs:
       security-events: write
 
     env:
-      PVS_STUDIO_NAME: ${{ secrets.PVS_STUDIO_NAME || 'PVS-Studio Free' }}
-      PVS_STUDIO_KEY: ${{ secrets.PVS_STUDIO_KEY || 'FREE-FREE-FREE-FREE' }}
+      PVS_STUDIO_NAME: ${{ secrets.PVS_STUDIO_NAME }}
+      PVS_STUDIO_KEY: ${{ secrets.PVS_STUDIO_KEY }}
 
     steps:
     - uses: actions/checkout@v4
@@ -164,10 +164,10 @@ jobs:
 
     - name: Activate PVS-Studio license
       run: |
-        cd java-app
-        mvn pvsstudio:pvsCredentials \
-          "-Dpvsstudio.userName=$PVS_STUDIO_NAME" \
-          "-Dpvsstudio.licenseKey=$PVS_STUDIO_KEY"
+        PVS_NAME="${PVS_STUDIO_NAME}"
+        PVS_KEY="${PVS_STUDIO_KEY}"
+        pvs-studio-analyzer credentials "$PVS_NAME" "$PVS_KEY"
+        pvs-studio-analyzer lic-info
 
     - name: Build Java project
       run: |
