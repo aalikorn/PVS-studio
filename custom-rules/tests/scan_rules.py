@@ -9,6 +9,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = ROOT.parent
 RULES_PATH = ROOT / "rules" / "rules.json"
 FIXTURES_ROOT = ROOT / "fixtures"
 
@@ -20,6 +21,19 @@ def load_rules() -> dict[str, dict]:
 
 def line_number_for_offset(text: str, offset: int) -> int:
     return text.count("\n", 0, offset) + 1
+
+
+def line_number_for_match(text: str, match: re.Match[str], group: int = 0) -> int:
+    return line_number_for_offset(text, match.start(group))
+
+
+def display_path(path: Path) -> str:
+    for base in (PROJECT_ROOT, ROOT):
+        try:
+            return str(path.relative_to(base))
+        except ValueError:
+            continue
+    return str(path)
 
 
 def detect_idor(path: Path, text: str, rule: dict) -> list[dict]:
@@ -37,6 +51,7 @@ def detect_idor(path: Path, text: str, rule: dict) -> list[dict]:
         for pattern in (
             f"findByUserId({route_param})",
             f"findById({route_param})",
+            f"findByIdWithDocs({route_param})",
             f"getUserDocs({route_param})",
             f"loadUser({route_param})",
         )
@@ -62,10 +77,49 @@ def detect_idor(path: Path, text: str, rule: dict) -> list[dict]:
             {
                 "ruleId": rule["id"],
                 "title": rule["title"],
-                "path": str(path.relative_to(ROOT)),
+                "path": display_path(path),
                 "line": line_number_for_offset(text, target),
             }
         ]
+
+    vuln_mode_branch = re.search(
+        r"if\s*\([^{;]*isVulnerableMode\(\)\)\s*\{(?P<body>.*?)\}\s*else\s*\{",
+        text,
+        flags=re.DOTALL,
+    )
+    if has_route and uses_identifier_for_fetch and vuln_mode_branch:
+        branch_body = vuln_mode_branch.group("body")
+        branch_has_guard = any(
+            pattern in branch_body
+            for pattern in (
+                "@PreAuthorize",
+                "Objects.equals(",
+                "hasRole(\"ADMIN\")",
+                "hasAuthority(\"ADMIN\")",
+                "isAdmin",
+                "accessChecker.canAccessUser",
+                "forbidden",
+            )
+        )
+        branch_uses_data = any(
+            pattern in branch_body
+            for pattern in (
+                "user.getDocs()",
+                "repository.findByUserId",
+                "userRepository.findByIdWithDocs",
+                "ResponseEntity.ok",
+            )
+        )
+        if branch_uses_data and not branch_has_guard:
+            return [
+                {
+                    "ruleId": rule["id"],
+                    "title": rule["title"],
+                    "path": display_path(path),
+                    "line": line_number_for_match(text, vuln_mode_branch),
+                    "details": "A vulnerable-mode branch returns user-owned data without an authorization guard.",
+                }
+            ]
     return []
 
 
@@ -78,23 +132,44 @@ def detect_short_literals(text: str, token: str) -> list[tuple[str, int]]:
     return findings
 
 
+def find_jwt_parser_chains(text: str) -> list[re.Match[str]]:
+    pattern = r"Jwts\.(?:parser|parserBuilder)\(\).*?;"
+    return list(re.finditer(pattern, text, flags=re.DOTALL))
+
+
 def detect_weak_jwt(path: Path, text: str, rule: dict) -> list[dict]:
     findings: list[dict] = []
 
-    if "Jwts.parser()" in text:
+    for chain_match in find_jwt_parser_chains(text):
+        chain = chain_match.group(0)
         has_require = any(
-            marker in text
+            marker in chain
             for marker in (".require(", ".requireIssuer(", ".requireAudience(", ".requireSubject(")
         )
-        if not has_require:
-            offset = text.index("Jwts.parser()")
+        has_verify = ".verifyWith(" in chain
+        has_legacy_signing_key = ".setSigningKey(" in chain
+        uses_unsecured_parser = ".unsecured(" in chain or ".parseUnsecuredClaims(" in chain
+
+        if uses_unsecured_parser:
             findings.append(
                 {
                     "ruleId": rule["id"],
                     "title": rule["title"],
-                    "path": str(path.relative_to(ROOT)),
+                    "path": display_path(path),
+                    "line": line_number_for_match(text, chain_match),
+                    "details": "JWT parser explicitly disables signature verification with unsecured parsing.",
+                }
+            )
+
+        if has_legacy_signing_key and not has_require and not has_verify:
+            offset = chain_match.start()
+            findings.append(
+                {
+                    "ruleId": rule["id"],
+                    "title": rule["title"],
+                    "path": display_path(path),
                     "line": line_number_for_offset(text, offset),
-                    "details": "Jwts.parser() is used without any require-constraints.",
+                    "details": "JWT parser uses setSigningKey(...) without any require-constraints.",
                 }
             )
 
@@ -108,7 +183,7 @@ def detect_weak_jwt(path: Path, text: str, rule: dict) -> list[dict]:
                 {
                     "ruleId": rule["id"],
                     "title": rule["title"],
-                    "path": str(path.relative_to(ROOT)),
+                    "path": display_path(path),
                     "line": line_number_for_offset(text, offset),
                     "details": f'Literal key "{literal}" is shorter than 32 bytes.',
                 }
