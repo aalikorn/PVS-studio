@@ -55,6 +55,11 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
+    - name: Set up Python (for custom rules)
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
     - name: Run Trivy vulnerability scanner
       uses: aquasecurity/trivy-action@master
       continue-on-error: true
@@ -78,6 +83,26 @@ jobs:
       with:
         name: trivy-results-sarif
         path: trivy-results.sarif
+        if-no-files-found: warn
+
+    - name: Run repository custom rules (SARIF)
+      if: always()
+      run: |
+        python3 custom-rules/scan_project_sarif.py
+
+    - name: Upload custom rules SARIF to GitHub Security
+      uses: github/codeql-action/upload-sarif@v4
+      if: always() && hashFiles('custom-rules-report.sarif') != ''
+      with:
+        sarif_file: custom-rules-report.sarif
+        category: Repo-Custom-Rules
+
+    - name: Upload custom rules SARIF artifact
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: custom-rules-sarif
+        path: custom-rules-report.sarif
         if-no-files-found: warn
 
 
