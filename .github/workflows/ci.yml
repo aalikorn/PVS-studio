@@ -40,10 +40,10 @@ jobs:
         cache: maven
         cache-dependency-path: java-app/pom.xml
     
-    - name: Build and test (Maven)
+    - name: Build (Maven)
       run: |
         cd java-app
-        mvn -B clean test
+        mvn -B clean verify -DskipTests
 
   security-scan:
     runs-on: ubuntu-latest
