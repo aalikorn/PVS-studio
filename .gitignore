@@ -58,6 +58,9 @@ target/
 *.war
 *.ear
 
-# --- Semgrep reports ---
-semgrep.sarif
-semgrep.json
+# --- PVS-Studio reports ---
+PVS-Studio.log
+*.plog
+*.sarif
+pvs-html-report/
+java-app/target/pvs/
