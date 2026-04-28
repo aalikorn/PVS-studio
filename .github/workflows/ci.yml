@@ -131,99 +131,58 @@ jobs:
         cache-from: type=gha
         cache-to: type=gha,mode=max
 
-  pvs-studio-java:
+  semgrep:
     runs-on: ubuntu-latest
 
     permissions:
       contents: read
       security-events: write
 
-    env:
-      PVS_STUDIO_NAME: ${{ secrets.PVS_STUDIO_NAME }}
-      PVS_STUDIO_KEY: ${{ secrets.PVS_STUDIO_KEY }}
-
     steps:
     - uses: actions/checkout@v4
 
-    - name: Set up Java
-      uses: actions/setup-java@v4
+    - name: Set up Python
+      uses: actions/setup-python@v5
       with:
-        distribution: temurin
-        java-version: '17'
-        cache: maven
-        cache-dependency-path: java-app/pom.xml
+        python-version: '3.11'
 
-    - name: Install PVS-Studio tools
+    - name: Install Semgrep
+      run: pip install semgrep
+
+    - name: Run Semgrep SARIF scan
       run: |
-        wget -q -O - https://files.pvs-studio.com/etc/pubkey.txt | sudo apt-key add -
-        sudo wget -O /etc/apt/sources.list.d/viva64.list https://files.pvs-studio.com/etc/viva64.list
-        sudo apt-get update
-        sudo apt-get install -y pvs-studio
-        pvs-studio-analyzer --version
-        command -v plog-converter
+        semgrep scan \
+          --config p/java \
+          --config p/python \
+          --config p/security-audit \
+          --config p/owasp-top-ten \
+          --sarif \
+          --output semgrep.sarif
 
-    - name: Build Java project
-      run: |
-        cd java-app
-        mvn -B clean compile -DskipTests
-
-    - name: Run PVS-Studio Java analysis
-      run: |
-        if [ -z "$PVS_STUDIO_NAME" ] || [ -z "$PVS_STUDIO_KEY" ]; then
-          echo "PVS_STUDIO_NAME and PVS_STUDIO_KEY GitHub Secrets must be configured."
-          exit 1
-        fi
-        cd java-app
-        mkdir -p target/pvs
-        mvn -B pvsstudio:pvsAnalyze \
-          "-Dpvsstudio.userName=$PVS_STUDIO_NAME" \
-          "-Dpvsstudio.licenseKey=$PVS_STUDIO_KEY" \
-          "-Dpvsstudio.outputType=log" \
-          "-Dpvsstudio.outputFile=target/pvs/PVS-Studio.log" \
-          "-Dpvsstudio.analysisMode=GA;OWASP" \
-          "-Dpvsstudio.sourceTreeRoot=${PWD}"
-
-    - name: Generate SARIF and HTML reports
+    - name: Run Semgrep JSON scan
       if: always()
       run: |
-        cd java-app
-        if [ -f target/pvs/PVS-Studio.log ]; then
-          plog-converter -t sarif -o target/pvs/pvs-report.sarif target/pvs/PVS-Studio.log
-          plog-converter -t fullhtml -o target/pvs/pvs-html-report target/pvs/PVS-Studio.log
-        else
-          echo "PVS-Studio raw log was not created"
-          exit 1
-        fi
+        semgrep scan \
+          --config p/java \
+          --config p/python \
+          --config p/security-audit \
+          --config p/owasp-top-ten \
+          --json \
+          --output semgrep.json || true
 
-    - name: Upload PVS SARIF to GitHub Security
+    - name: Upload Semgrep SARIF to GitHub Security
       uses: github/codeql-action/upload-sarif@v4
-      if: always() && hashFiles('java-app/target/pvs/pvs-report.sarif') != ''
+      if: always() && hashFiles('semgrep.sarif') != ''
       with:
-        sarif_file: java-app/target/pvs/pvs-report.sarif
-        category: PVS-Studio-Java
+        sarif_file: semgrep.sarif
+        category: Semgrep
 
-    - name: Upload PVS SARIF artifact
+    - name: Upload Semgrep reports
       uses: actions/upload-artifact@v4
       if: always()
       with:
-        name: pvs-sarif-report
-        path: java-app/target/pvs/pvs-report.sarif
-        if-no-files-found: warn
-
-    - name: Upload PVS HTML artifact
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: pvs-html-report
-        path: java-app/target/pvs/pvs-html-report/
-        if-no-files-found: warn
-
-    - name: Upload PVS raw log artifact
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: pvs-raw-report
+        name: semgrep-reports
         path: |
-          java-app/target/pvs/PVS-Studio.log
-          java-app/target/pvs/*.plog
+          semgrep.sarif
+          semgrep.json
         if-no-files-found: warn
