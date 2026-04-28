@@ -138,6 +138,10 @@ jobs:
       contents: read
       security-events: write
 
+    env:
+      PVS_STUDIO_NAME: ${{ secrets.PVS_STUDIO_NAME }}
+      PVS_STUDIO_KEY: ${{ secrets.PVS_STUDIO_KEY }}
+
     steps:
     - uses: actions/checkout@v4
 
@@ -165,9 +169,15 @@ jobs:
 
     - name: Run PVS-Studio Java analysis
       run: |
+        if [ -z "$PVS_STUDIO_NAME" ] || [ -z "$PVS_STUDIO_KEY" ]; then
+          echo "PVS_STUDIO_NAME and PVS_STUDIO_KEY GitHub Secrets must be configured."
+          exit 1
+        fi
         cd java-app
         mkdir -p target/pvs
         mvn -B pvsstudio:pvsAnalyze \
+          "-Dpvsstudio.userName=$PVS_STUDIO_NAME" \
+          "-Dpvsstudio.licenseKey=$PVS_STUDIO_KEY" \
           "-Dpvsstudio.outputType=log" \
           "-Dpvsstudio.outputFile=target/pvs/PVS-Studio.log" \
           "-Dpvsstudio.analysisMode=GA;OWASP" \
