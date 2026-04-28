@@ -165,9 +165,9 @@ jobs:
     - name: Activate PVS-Studio license
       run: |
         cd java-app
-        mvn -B pvsstudio:pvsCredentials \
-          "-Dpvsstudio.userName=${PVS_STUDIO_NAME}" \
-          "-Dpvsstudio.licenseKey=${PVS_STUDIO_KEY}"
+        mvn pvsstudio:pvsCredentials \
+          "-Dpvsstudio.userName=$PVS_STUDIO_NAME" \
+          "-Dpvsstudio.licenseKey=$PVS_STUDIO_KEY"
 
     - name: Build Java project
       run: |
