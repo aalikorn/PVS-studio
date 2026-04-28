@@ -5,6 +5,7 @@ package demo.fixed;
 
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 
 public class JwtAuthConfig {
@@ -18,5 +19,14 @@ public class JwtAuthConfig {
       .build()
       .parseClaimsJws(token)
       .getBody();
+  }
+
+  public Object verifiedParser(String token) {
+    SecretKey key = Keys.hmacShaKeyFor(SECRET.getBytes(StandardCharsets.UTF_8));
+    return Jwts.parser()
+      .verifyWith(key)
+      .build()
+      .parseSignedClaims(token)
+      .getPayload();
   }
 }
