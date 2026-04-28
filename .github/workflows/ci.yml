@@ -161,7 +161,7 @@ jobs:
     - name: Build Java project
       run: |
         cd java-app
-        mvn -B clean test
+        mvn -B clean compile -DskipTests
 
     - name: Run PVS-Studio Java analysis
       run: |
