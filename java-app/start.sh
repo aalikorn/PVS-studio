@@ -25,7 +25,11 @@ if ! command -v docker &> /dev/null; then
 fi
 
 # Start with docker-compose
-docker-compose -f docker-compose-java.yml up --build
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+cd "${REPO_ROOT}"
+MODE="${MODE}" docker compose -f docker-compose-java.yml up --build
 
 echo ""
 echo "Application stopped."

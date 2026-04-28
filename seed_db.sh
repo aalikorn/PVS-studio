@@ -1,11 +1,11 @@
 #!/bin/bash
-# Script to seed the database after containers are up
+# Script to (optionally) seed the database for Java demo
+#
+# Java version seeds automatically on startup via DataSeeder.
+#
+# Kept for backwards compatibility with the old Python version.
 
-echo "Waiting for database to be ready..."
-sleep 5
+set -euo pipefail
 
-echo "Seeding database..."
-docker compose exec -e DB_HOST=db -e DB_PORT=5432 -e DB_NAME=mydb -e DB_USER=myuser -e DB_PASSWORD=mypassword web python seed_db.py
-
-echo "Database seeded successfully!"
+echo "Java version seeds automatically. Nothing to do."
 
