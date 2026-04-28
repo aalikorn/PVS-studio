@@ -1,0 +1,191 @@
+name: PVS-Studio Security Analysis
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  pvs-studio-analysis:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Set up Java
+      uses: actions/setup-java@v4
+      with:
+        java-version: 17
+        distribution: 'temurin'
+        cache: maven
+    
+    # ============================================================================
+    # IMPORTANT: Sofia needs to:
+    # 1. Get PVS-Studio license key from https://pvs-studio.com/en/order/
+    # 2. Add it as GitHub Secret named 'PVS_STUDIO_LICENSE_KEY'
+    # 3. Instructions: Settings → Secrets and variables → Actions → New repository secret
+    # ============================================================================
+    
+    - name: Install PVS-Studio
+      run: |
+        # Download PVS-Studio for Linux
+        wget https://files.pvs-studio.com/pvs-studio_latest.deb
+        sudo dpkg -i pvs-studio_latest.deb
+        
+        # Verify installation
+        pvs-studio-analyzer --version
+    
+    - name: Check PVS-Studio License
+      # This will fail if license key is not set - Sofia handles this
+      env:
+        PVS_LICENSE_KEY: ${{ secrets.PVS_STUDIO_LICENSE_KEY }}
+      run: |
+        if [ -z "$PVS_LICENSE_KEY" ]; then
+          echo "ERROR: PVS_STUDIO_LICENSE_KEY secret not configured"
+          echo "Sofia: Add your PVS-Studio license key to GitHub Secrets"
+          exit 1
+        fi
+        
+        # Register license
+        pvs-studio-analyzer --key "$PVS_LICENSE_KEY"
+        
+        # Verify
+        echo "License registered successfully"
+    
+    # VULN Mode Analysis
+    - name: Build VULN mode
+      env:
+        MODE: VULN
+      run: |
+        cd java-app
+        mvn clean compile -DskipTests
+    
+    - name: Analyze VULN mode with PVS-Studio
+      env:
+        MODE: VULN
+        PVS_LICENSE_KEY: ${{ secrets.PVS_STUDIO_LICENSE_KEY }}
+      run: |
+        cd java-app
+        
+        # Run analysis
+        pvs-studio-analyzer \
+          analyze \
+          -o pvs-studio-vuln.log \
+          -j$(nproc)
+        
+        # Convert to SARIF
+        plog-converter \
+          -t sarif \
+          -o pvs-studio-vuln.sarif \
+          pvs-studio-vuln.log
+        
+        echo "VULN mode analysis complete"
+        ls -lh pvs-studio-vuln.*
+    
+    # FIXED Mode Analysis
+    - name: Build FIXED mode
+      env:
+        MODE: FIXED
+      run: |
+        cd java-app
+        mvn clean compile -DskipTests
+    
+    - name: Analyze FIXED mode with PVS-Studio
+      env:
+        MODE: FIXED
+        PVS_LICENSE_KEY: ${{ secrets.PVS_STUDIO_LICENSE_KEY }}
+      run: |
+        cd java-app
+        
+        # Run analysis
+        pvs-studio-analyzer \
+          analyze \
+          -o pvs-studio-fixed.log \
+          -j$(nproc)
+        
+        # Convert to SARIF
+        plog-converter \
+          -t sarif \
+          -o pvs-studio-fixed.sarif \
+          pvs-studio-fixed.log
+        
+        echo "FIXED mode analysis complete"
+        ls -lh pvs-studio-fixed.*
+    
+    # Upload SARIF reports to GitHub Security tab
+    - name: Upload VULN SARIF report
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: java-app/pvs-studio-vuln.sarif
+        category: PVS-Studio-VULN
+    
+    - name: Upload FIXED SARIF report
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: java-app/pvs-studio-fixed.sarif
+        category: PVS-Studio-FIXED
+    
+    # Archive results for download
+    - name: Upload analysis artifacts
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: pvs-studio-reports
+        path: |
+          java-app/pvs-studio-vuln.sarif
+          java-app/pvs-studio-fixed.sarif
+          java-app/pvs-studio-vuln.log
+          java-app/pvs-studio-fixed.log
+    
+    # Generate comparison report
+    - name: Compare findings between VULN and FIXED
+      if: always()
+      run: |
+        python3 << 'COMPARE_EOF'
+import json
+import sys
+from pathlib import Path
+
+def load_sarif(path):
+    try:
+        with open(path) as f:
+            data = json.load(f)
+        results = []
+        for run in data.get('runs', []):
+            for result in run.get('results', []):
+                results.append(result)
+        return results
+    except Exception as e:
+        print(f"Error loading {path}: {e}")
+        return []
+
+vuln_path = Path("java-app/pvs-studio-vuln.sarif")
+fixed_path = Path("java-app/pvs-studio-fixed.sarif")
+
+if vuln_path.exists() and fixed_path.exists():
+    vuln_findings = load_sarif(vuln_path)
+    fixed_findings = load_sarif(fixed_path)
+    
+    print(f"\n{'='*80}")
+    print(f"PVS-Studio Analysis Comparison")
+    print(f"{'='*80}")
+    print(f"VULN mode findings:  {len(vuln_findings)}")
+    print(f"FIXED mode findings: {len(fixed_findings)}")
+    print(f"Fixed in FIXED mode: {len(vuln_findings) - len(fixed_findings)}")
+    print(f"{'='*80}\n")
+    
+    if len(fixed_findings) == 0:
+        print("✓ SUCCESS: All vulnerabilities fixed in FIXED mode!")
+    else:
+        print(f"⚠ WARNING: {len(fixed_findings)} findings remain in FIXED mode")
+else:
+    print("SARIF files not found - analysis may have failed")
+COMPARE_EOF
