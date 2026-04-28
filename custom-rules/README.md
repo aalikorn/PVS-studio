@@ -1,6 +1,6 @@
 # Custom rules for IDOR and weak JWT
 
-This directory contains two repository-local custom security checks that complement PVS-Studio for the future Java rewrite of this project.
+This directory contains two repository-local custom security checks that complement PVS-Studio for the Java version of this project.
 
 Important limitation:
 
@@ -9,7 +9,9 @@ Important limitation:
   - JSON annotations that enrich existing analysis;
   - paid development of new custom diagnostics by the PVS-Studio team.
 
-Because the repository currently contains only the original Python demo and does not yet contain the promised Java/C# rewrite, the rules here are implemented as a small companion checker with Java fixtures that model the same vulnerabilities.
+Because of that limitation, the rules here are implemented as a small repository-local companion checker. It is designed to be stored and versioned next to the project and to run alongside the regular PVS-Studio pipeline.
+
+The repository's `java-app` keeps vulnerable and fixed behavior behind the runtime `MODE` switch, so a plain static scan of `src/main/java` would see both branches at once. For that reason, the custom rule tests use isolated vulnerable/fixed Java fixtures that represent the effective code in each mode.
 
 What is included:
 
@@ -25,7 +27,8 @@ Rules:
 
 2. `PVS-CUSTOM-JWT-002`
    Detects weak JWT parsing/verification patterns:
-   - `Jwts.parser()` used without any `.require...` constraints;
+   - `Jwts.parser().unsecured()` / `parseUnsecuredClaims(...)`;
+   - `setSigningKey(...)` used without any `.require...` constraints;
    - too-short literal signing key passed into `setSigningKey(...)`;
    - too-short literal secret passed into `Keys.hmacShaKeyFor(...)`.
 
@@ -40,9 +43,18 @@ Expected result:
 - vulnerable fixtures: findings are reported;
 - fixed fixtures: no findings.
 
-Relevant official PVS-Studio documentation consulted on April 27, 2026:
+Relevant official PVS-Studio documentation consulted on April 28, 2026:
 
 - [User annotation mechanism in JSON format](https://pvs-studio.com/en/docs/manual/6810/)
 - [Annotating Java entities in JSON format](https://pvs-studio.com/en/docs/manual/7180/)
 - [Annotating C# entities in JSON format](https://pvs-studio.com/en/docs/manual/6808/)
 - [Custom diagnostics are developed by PVS-Studio as a paid service](https://pvs-studio.com/en/custom/)
+
+What was verified in this repository:
+
+- the IDOR rule fires on `fixtures/vulnerable/IDORController.java` and stays silent on `fixtures/fixed/IDORController.java`;
+- the JWT rule fires on vulnerable patterns matching the task:
+  - unsecured parsing;
+  - parser configuration without claim requirements;
+  - short literal HMAC secrets;
+- the JWT rule stays silent on the fixed fixture that uses `verifyWith(...)` and claim requirements.

@@ -8,6 +8,14 @@ import io.jsonwebtoken.security.Keys;
 import java.nio.charset.StandardCharsets;
 
 public class JwtAuthConfig {
+  public Object unsecuredParser(String token) {
+    return Jwts.parser()
+      .unsecured()
+      .build()
+      .parseUnsecuredClaims(token)
+      .getPayload();
+  }
+
   public Object weakParser(String token) {
     return Jwts.parser()
       .setSigningKey("short-secret")
