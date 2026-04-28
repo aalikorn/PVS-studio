@@ -257,6 +257,10 @@ GitHub Actions workflow (`.github/workflows/`) includes:
 - Maven 3.6+ (for Java builds)
 - PostgreSQL 16 (provided via Docker)
 
+## SAST Tools
+
+[PVS-Studio](https://pvs-studio.com/en/pvs-studio/?utm_source=website&utm_medium=github&utm_campaign=open_source) - static analyzer for C, C++, C#, and Java code.
+
 ## License
 
 This is a security demonstration project for educational purposes.
