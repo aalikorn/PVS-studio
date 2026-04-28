@@ -10,6 +10,7 @@ import com.security.demo.repository.UserRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.util.Arrays;
@@ -20,6 +21,7 @@ import java.util.List;
  * Runs automatically on application startup.
  */
 @Component
+@ConditionalOnProperty(value = "app.seed.enabled", havingValue = "true", matchIfMissing = true)
 public class DataSeeder implements CommandLineRunner {
     
     private static final Logger logger = LoggerFactory.getLogger(DataSeeder.class);
