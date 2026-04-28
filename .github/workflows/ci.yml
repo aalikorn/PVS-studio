@@ -7,6 +7,9 @@ on:
   pull_request:
     branches: [ main]
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -29,41 +32,18 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
-    - name: Set up Python
-      uses: actions/setup-python@v5
+    - name: Set up Java
+      uses: actions/setup-java@v4
       with:
-        python-version: '3.9'
+        distribution: temurin
+        java-version: '17'
+        cache: maven
+        cache-dependency-path: java-app/pom.xml
     
-    - name: Install dependencies
+    - name: Build and test (Maven)
       run: |
-        cd app
-        pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install pytest pytest-cov
-    
-    - name: Run database migrations and seed
-      env:
-        DB_HOST: localhost
-        DB_PORT: 5432
-        DB_NAME: mydb
-        DB_USER: myuser
-        DB_PASSWORD: mypassword
-      run: |
-        cd app
-        python seed_db.py
-    
-    - name: Run tests (if any)
-      env:
-        DB_HOST: localhost
-        DB_PORT: 5432
-        DB_NAME: mydb
-        DB_USER: myuser
-        DB_PASSWORD: mypassword
-      run: |
-        cd app
-        # Placeholder for future tests
-        echo "Tests would run here"
-        # pytest tests/ || true
+        cd java-app
+        mvn -B clean test
 
   security-scan:
     runs-on: ubuntu-latest
@@ -75,41 +55,30 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - uses: actions/setup-python@v5
-      with:
-        python-version: '3.9'
-
-    - name: Install Bandit
-      run: pip install bandit[toml]
-
-    - name: Run Bandit security scan
-      continue-on-error: true
-      run: |
-        cd app
-        bandit -r app/ -f json -o bandit-report.json
-        bandit -r app/ -f txt
-
-    - name: Upload Bandit report
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: bandit-report
-        path: app/bandit-report.json
-
     - name: Run Trivy vulnerability scanner
       uses: aquasecurity/trivy-action@master
+      continue-on-error: true
       with:
         scan-type: 'fs'
-        scan-ref: './app'
+        scan-ref: './java-app'
         format: 'sarif'
         output: 'trivy-results.sarif'
         severity: 'HIGH,CRITICAL'
+        exit-code: '0'
 
     - name: Upload Trivy results to GitHub Security
       uses: github/codeql-action/upload-sarif@v4
       if: always()
       with:
         sarif_file: 'trivy-results.sarif'
+
+    - name: Upload Trivy SARIF artifact
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: trivy-results-sarif
+        path: trivy-results.sarif
+        if-no-files-found: warn
 
 
   docker-build:
