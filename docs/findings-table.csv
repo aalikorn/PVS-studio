@@ -1,9 +1,0 @@
-PVS_ID,CWE,Severity,File,Line,Finding,Type,VULN_Status,FIXED_Status,Reproducible
-V6088,639,CRITICAL,ApiController.java,154-176,No authorization check in getUserDocs() - any authenticated user can access any user's docs,Real Vulnerability,Present,Fixed,YES
-V6089,347,CRITICAL,JwtUtil.java,96-100,Unsecured JWT parsing - accepts alg=none tokens without signature verification,Real Vulnerability,Present,Fixed,YES
-V6090,521,CRITICAL,JwtUtil.java,54-56,Weak JWT secret "weak_secret_123" (18 chars) - brute-forceable,Real Vulnerability,Present,Fixed,YES
-V1234,200,HIGH,ApiController.java,164-174,Token payload exposed in response - helps attackers understand token structure,Real Vulnerability,Present,Fixed,YES
-V1235,639,MEDIUM,ApiController.java,145-148,User enumeration via 404 responses on nonexistent user IDs,Partial False Positive,Present,Partial,NO
-W1001,,LOW,ApiController.java,91-96,Null check could be improved with Optional,False Positive,Present,Present,NO
-W1002,,LOW,JwtUtil.java,84-88,Return type could use Optional<Claims>,False Positive,Present,Present,NO
-W1003,,LOW,UserRepository.java,32,Unused import statement,False Positive,Present,Present,NO
