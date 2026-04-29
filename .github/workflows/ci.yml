@@ -40,10 +40,10 @@ jobs:
         cache: maven
         cache-dependency-path: java-app/pom.xml
     
-    - name: Build (Maven)
+    - name: Build and test Java application
       run: |
         cd java-app
-        mvn -B clean verify -DskipTests
+        mvn -B clean verify
 
   security-scan:
     runs-on: ubuntu-latest
@@ -115,11 +115,11 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
     
-    - name: Build Docker image
+    - name: Build Java Docker image
       uses: docker/build-push-action@v5
       with:
-        context: ./python-app
-        file: ./python-app/Dockerfile
+        context: ./java-app
+        file: ./java-app/Dockerfile
         push: false
         tags: idor-jwt:test
         cache-from: type=gha
