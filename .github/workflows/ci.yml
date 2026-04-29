@@ -118,8 +118,8 @@ jobs:
     - name: Build Docker image
       uses: docker/build-push-action@v5
       with:
-        context: ./app
-        file: ./app/Dockerfile
+        context: ./java-app
+        file: ./java-app/Dockerfile
         push: false
         tags: idor-jwt:test
         cache-from: type=gha
