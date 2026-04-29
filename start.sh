@@ -6,7 +6,7 @@ echo "IDOR + JWT Demo - Java Version"
 echo "==================================="
 echo ""
 
-MODE="${MODE:-VULN}"
+MODE="${MODE:-FIXED}"
 echo "Starting docker-compose-java.yml with MODE=${MODE}"
 echo ""
 

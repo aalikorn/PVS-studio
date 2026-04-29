@@ -1,272 +1,138 @@
-# Exploitation and Fix of IDOR and Weak JWT in a Microservice API
+# IDOR & JWT Weaknesses: a case study in static analysis with PVS-Studio
 
-## Overview
+**What’s inside:** A tiny microservice that shows two common API security flaws (IDOR and unsigned JWTs) in `VULN` mode, and how to fix them in `FIXED` mode. Also includes a full SAST pipeline with PVS‑Studio + custom rules.
 
-This project demonstrates two critical API-layer vulnerabilities:
-- **IDOR** (Insecure Direct Object Reference) on `GET /users/<id>/docs`
-- **Weak JWT** acceptance (e.g., accepting `alg=none` or skipping signature verification)
+The application supports two runtime modes:
 
-The repository contains **two implementations**:
-1. **Python/Flask** (original) - in `app/` directory
-2. **Java/Spring Boot** (new) - in `java-app/` directory
+- **`MODE=VULN`**: intentionally vulnerable behavior for reproduction and triage
+- **`MODE=FIXED`**: hardened behavior for verification
 
-Both implementations support:
-- Vulnerable mode (MODE=VULN) and fixed mode (MODE=FIXED)
-- PoC scripts for exploitation
-- Docker Compose for reproducible environment
-- Comprehensive testing
-- CI pipeline configuration
+---
 
-## Team & Responsibilities
+## Get it running
 
-- **Aleksei Fominykh** — Custom PVS-Studio rules, infra, docker-compose, logging
-- **Sofia Kulagina** — CI (GitHub Actions), security scan config, seed automation
-- **Daria Nikolaeva** — Java rewrite, Flask app, PoC scripts, testing, documentation
-- **Diana Yakupova** — Burp testing, threat model, report, demo orchestration
+### Run with Docker Compose
 
-## Quick Start
-
-### Java Implementation (Recommended for PVS-Studio)
-
-**Vulnerable Mode**:
-```bash
-MODE=VULN docker-compose -f docker-compose-java.yml up --build
-```
-
-**Fixed Mode**:
-```bash
-MODE=FIXED docker-compose -f docker-compose-java.yml up --build
-```
-
-Access the service at <http://localhost:5001>
-
-### Python Implementation (Original)
+Vulnerable:
 
 ```bash
-MODE=VULN docker-compose up --build
-# or
-MODE=FIXED docker-compose up --build
+MODE=VULN docker compose -f docker-compose-java.yml up -d --build
+curl -s http://localhost:5001/health
 ```
 
-Access the service at <http://localhost:5001>
+Fixed:
 
-## Project Structure
-
-```
-.
-├── app/                          # Python/Flask implementation
-│   ├── app/
-│   │   ├── __init__.py
-│   │   ├── main.py
-│   │   ├── routes.py            # API endpoints
-│   │   ├── auth.py              # JWT handling
-│   │   ├── models.py            # Database models
-│   │   └── config.py
-│   ├── poc/                     # Python PoC scripts
-│   └── seed_db.py
-│
-├── java-app/                     # Java/Spring Boot implementation
-│   ├── src/main/java/com/security/demo/
-│   │   ├── controller/          # REST controllers
-│   │   ├── security/            # JWT utilities
-│   │   ├── model/               # JPA entities
-│   │   ├── repository/          # Data access
-│   │   └── config/              # Configuration
-│   ├── src/test/                # Unit tests
-│   ├── poc/                     # Bash PoC scripts
-│   └── pom.xml
-│
-├── custom-rules/                 # PVS-Studio custom rules
-│   ├── rules/
-│   │   └── rules.json
-│   ├── fixtures/
-│   │   ├── vulnerable/          # Test cases for rules
-│   │   └── fixed/
-│   └── tests/
-│
-├── docs/
-│   └── methods.md               # Methodology documentation
-│
-├── demo/                        # Demo artifacts
-│   ├── logs/
-│   └── report/
-│
-├── docker-compose.yml           # Python deployment
-├── docker-compose-java.yml      # Java deployment
-└── README.md
-```
-
-## API Endpoints
-
-Both implementations expose identical endpoints:
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/` | GET | API information |
-| `/health` | GET | Health check with DB status |
-| `/login` | POST | Authenticate user, get JWT |
-| `/users/{id}/docs` | GET | Get user documents (requires auth) |
-
-## Demonstrating Vulnerabilities
-
-### 1. IDOR Vulnerability
-
-**Exploit in VULN mode**:
 ```bash
-# Login as Alice
+docker compose -f docker-compose-java.yml down
+MODE=FIXED docker compose -f docker-compose-java.yml up -d --build
+curl -s http://localhost:5001/health
+```
+
+You should see `{"mode":"VULN" ...}` or `{"mode":"FIXED" ...}` in the response.
+
+### One-command helper
+
+```bash
+./start.sh
+```
+
+---
+
+## API endpoints
+
+- `GET /` — API info
+- `GET /health` — health check + DB probe
+- `POST /login` — returns JWT for a username
+- `GET /users/{id}/docs` — protected documents endpoint (**IDOR target**)
+
+---
+
+## Reproducing the vulnerabilities (VULN vs FIXED)
+
+### 1) IDOR
+
+Login as Alice:
+
+```bash
 TOKEN=$(curl -s -X POST http://localhost:5001/login \
   -H "Content-Type: application/json" \
-  -d '{"username":"alice"}' | jq -r '.access_token')
+  -d '{"username":"alice"}' | python3 -c 'import sys,json; print(json.load(sys.stdin)["access_token"])')
+```
 
-# Access Bob's documents (user_id=2) using Alice's token
-curl http://localhost:5001/users/2/docs \
+Try to read Bob’s docs with Alice’s token:
+
+```bash
+curl -i http://localhost:5001/users/2/docs \
   -H "Authorization: Bearer $TOKEN"
 ```
 
-**Result**:
-- **VULN mode**: ✓ Success - Alice can see Bob's documents (IDOR vulnerability)
-- **FIXED mode**: ✗ 403 Forbidden - Access denied
+Expected:
 
-### 2. Weak JWT
+- **VULN**: `200 OK`
+- **FIXED**: `403 Forbidden`
 
-**Exploit in VULN mode**:
+### 2) Unsigned JWT (alg=none)
+
 ```bash
-# Create unsigned token (alg=none)
 UNSIGNED_TOKEN="eyJhbGciOiJub25lIn0.eyJ1c2VyX2lkIjoxLCJ1c2VybmFtZSI6ImFsaWNlIiwicm9sZSI6InVzZXIifQ."
-
-# Use forged token
-curl http://localhost:5001/users/1/docs \
+curl -i http://localhost:5001/users/1/docs \
   -H "Authorization: Bearer $UNSIGNED_TOKEN"
 ```
 
-**Result**:
-- **VULN mode**: ✓ Success - Unsigned token accepted
-- **FIXED mode**: ✗ 401 Unauthorized - Token rejected
+Expected:
 
-### Automated PoC Scripts
+- **VULN**: `200 OK`
+- **FIXED**: `401 Unauthorized`
 
-**Java implementation**:
-```bash
-cd java-app
-./poc/exploit_idor.sh
-./poc/forge_jwt.sh
-```
+---
 
-**Python implementation**:
-```bash
-cd app
-python poc/exploit_idor.py
-python poc/forge_jwt.py
-```
+## CI/SAST
 
-## Test Users
+GitHub Actions workflow is in `.github/workflows/ci.yml` and produces:
 
-Both implementations seed identical test data:
+- **PVS‑Studio Java analysis** (SARIF + HTML + raw log as artifacts)
+- **Trivy** filesystem scan (SARIF)
+- **Repo custom security rules** (SARIF uploaded to Code Scanning + saved as artifact)
 
-| Username | ID | Role | Documents |
-|----------|----|----|-----------|
-| alice | 1 | user | 2 |
-| bob | 2 | user | 3 |
-| charlie | 3 | user | 1 |
-| admin | 4 | admin | 0 |
-| victim | 5 | user | 2 |
+---
 
-## Testing
+## Custom rules (project-specific SAST)
 
-### Java Tests
-```bash
-cd java-app
-mvn test
-```
+Why: business-logic vulnerabilities like IDOR/JWT patterns are often not detected by generic analyzers without project context.
 
-Tests verify:
-- IDOR vulnerability exists in VULN mode
-- IDOR is fixed in FIXED mode
-- Weak JWT accepted in VULN mode
-- JWT validation works in FIXED mode
-- Authorization logic for admin and regular users
+- Rules metadata: `custom-rules/rules/rules.json`
+- Rule test fixtures: `custom-rules/fixtures/`
+- Rule checks: `custom-rules/tests/scan_rules.py`
+- Project scan → SARIF: `custom-rules/scan_project_sarif.py`
 
-### Python Tests
-```bash
-cd app
-pytest
-```
-
-## Security Issues
-
-### Vulnerabilities (VULN Mode)
-
-1. **IDOR**: Missing authorization check - any authenticated user can access any user's documents
-2. **Weak JWT Secret**: Short, predictable secret ("weak_secret_123")
-3. **No Signature Verification**: Accepts unsigned JWT tokens (alg=none)
-4. **Information Disclosure**: Exposes token payload in API responses
-
-### Fixes (FIXED Mode)
-
-1. **Authorization Check**: Validates user ownership or admin role
-2. **Strong Secret**: 32+ character secret from environment
-3. **Signature Verification**: Strictly validates JWT signatures
-4. **Minimal Response**: Removes sensitive information from responses
-
-## PVS-Studio Integration
-
-The Java implementation includes custom PVS-Studio rules for detecting:
-
-1. **IDOR patterns**: Methods accessing resources without authorization checks
-2. **Weak JWT usage**: Unsigned token parsing, weak secrets
-
-See [`custom-rules/README.md`](custom-rules/README.md) for details.
-
-### Running PVS-Studio Analysis
+Run locally:
 
 ```bash
-# Analyze Java code
-cd java-app
-pvs-studio-analyzer analyze -o pvs-studio.log
-plog-converter -t sarif -o report.sarif pvs-studio.log
+python3 custom-rules/scan_project_sarif.py
 ```
 
-## CI/CD Pipeline
+---
 
-GitHub Actions workflow (`.github/workflows/`) includes:
-- Build and test
-- PVS-Studio static analysis
-- SARIF report generation
-- Artifact upload
+## Triage and report materials
 
-## Documentation
+The main “what we did + evidence” lives in `docs/`:
 
-- [`docs/methods.md`](docs/methods.md) - Detailed methodology for rewrite and vulnerability reproduction
-- [`java-app/README.md`](java-app/README.md) - Java implementation guide
-- [`custom-rules/README.md`](custom-rules/README.md) - PVS-Studio custom rules
+- `docs/pvs-report.md` — report (IMRaD)
+- `docs/findings-table.csv` — triaged findings registry (CWE + status)
 
-## Environment Variables
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `MODE` | Application mode (VULN or FIXED) | VULN |
-| `DATABASE_URL` | PostgreSQL connection string | (see docker-compose) |
-| `WEAK_SECRET` | JWT secret for VULN mode | weak_secret_123 |
-| `STRONG_SECRET` | JWT secret for FIXED mode | (auto-generated) |
+---
 
 ## Requirements
 
-- Docker & Docker Compose
-- Java 17+ (for local Java development)
-- Python 3.10+ (for local Python development)
-- Maven 3.6+ (for Java builds)
-- PostgreSQL 16 (provided via Docker)
+- Docker + Docker Compose
+- Java 17 (for local build/dev)
+- Maven (optional for local build: `cd java-app && mvn test`)
 
-## SAST Tools
-
-[PVS-Studio](https://pvs-studio.com/en/pvs-studio/?utm_source=website&utm_medium=github&utm_campaign=open_source) - static analyzer for C, C++, C#, and Java code.
-
-## License
-
-This is a security demonstration project for educational purposes.
+---
 
 ## References
 
-- [OWASP IDOR](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/05-Authorization_Testing/04-Testing_for_Insecure_Direct_Object_References)
-- [JWT Best Practices](https://tools.ietf.org/html/rfc8725)
-- [PVS-Studio Documentation](https://pvs-studio.com/en/docs/)
+- OWASP IDOR testing guide: `https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/05-Authorization_Testing/04-Testing_for_Insecure_Direct_Object_References`
+- RFC 7518 (JWA): `https://www.rfc-editor.org/rfc/rfc7518`
+- RFC 8725 (JWT best practices): `https://www.rfc-editor.org/rfc/rfc8725`
+- PVS‑Studio docs: `https://pvs-studio.com/en/docs/`
