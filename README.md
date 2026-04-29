@@ -1,4 +1,5 @@
 # IDOR & JWT Weaknesses: a case study in static analysis with PVS-Studio
+Tap to [demo video](https://drive.google.com/file/d/1aJOuvXBbHfUTXMJLkhe3hOOmdTLJWChf/view?usp=sharing).
 
 **What’s inside:** A tiny microservice that shows two common API security flaws (IDOR and unsigned JWTs) in `VULN` mode, and how to fix them in `FIXED` mode. Also includes a full SAST pipeline with PVS‑Studio + custom rules.
 
